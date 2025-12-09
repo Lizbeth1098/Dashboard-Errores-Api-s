@@ -2,7 +2,7 @@
 """
 🏥 DASHBOARD DE ERRORES API - PROA/CHOPO
 =========================================
-Versión 9.0 - Mejoras de visualización (Modo Privado)
+Versión 9.0 - Mejoras de visualización
 
 Autor: Lizbeth Ramírez | PROA - Ecommerce
 """
@@ -54,7 +54,7 @@ MESES_ES = {
 }
 
 # ============================================
-# CSS (CON BLOQUEO DE CÓDIGO)
+# CSS
 # ============================================
 st.markdown(f"""
 <style>
@@ -144,11 +144,8 @@ st.markdown(f"""
         margin: 0;
     }}
     
-    /* === AQUÍ ESTÁ LA CORRECCIÓN === */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;} /* Oculta la barra superior (Gatito, Deploy, etc) */
-
+    #MainMenu {{visibility: hidden;}}
+    footer {{visibility: hidden;}}
 </style>
 """, unsafe_allow_html=True)
 
