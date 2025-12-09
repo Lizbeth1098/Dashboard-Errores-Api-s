@@ -2,7 +2,7 @@
 """
 🏥 DASHBOARD DE ERRORES API - PROA/CHOPO
 =========================================
-Versión 9.0 FINAL - Modo Privado (Sin código visible)
+Versión 9.0 - Mejoras de visualización
 
 Autor: Lizbeth Ramírez | PROA - Ecommerce
 """
@@ -26,7 +26,6 @@ st.set_page_config(
 # ============================================
 # 🔗 TU GOOGLE SHEET
 # ============================================
-# Asegúrate de que el Google Sheet tenga permiso "Cualquiera con el enlace puede ver"
 GOOGLE_SHEET_ID = "1ycVV-aBUBhlPdJk9s3wSvaZflyMbSpmG1OpmB9rZof8"
 GOOGLE_SHEET_URL = f"https://docs.google.com/spreadsheets/d/{GOOGLE_SHEET_ID}/export?format=csv"
 
@@ -55,7 +54,7 @@ MESES_ES = {
 }
 
 # ============================================
-# CSS (CON EL BLOQUEO DE CÓDIGO)
+# CSS
 # ============================================
 st.markdown(f"""
 <style>
@@ -145,11 +144,8 @@ st.markdown(f"""
         margin: 0;
     }}
     
-    /* === AQUÍ ESTÁ EL TRUCO PARA OCULTAR EL CÓDIGO === */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;} /* <--- ESTO OCULTA LA BARRA SUPERIOR */
-    
+    #MainMenu {{visibility: hidden;}}
+    footer {{visibility: hidden;}}
 </style>
 """, unsafe_allow_html=True)
 
