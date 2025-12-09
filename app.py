@@ -2,7 +2,7 @@
 """
 🏥 DASHBOARD DE ERRORES API - PROA/CHOPO
 =========================================
-Versión 9.0 - Mejoras de visualización
+Versión 9.1 - Más robusto
 
 Autor: Lizbeth Ramírez | PROA - Ecommerce
 """
@@ -11,7 +11,6 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
-import calendar
 
 # ============================================
 # CONFIGURACIÓN
@@ -167,6 +166,29 @@ def cargar_google_sheet():
     except Exception as e:
         return None, str(e)
 
+def obtener_meses_disponibles(df):
+    """Obtiene lista de meses disponibles en los datos"""
+    meses = []
+    try:
+        if df is not None and 'fecha' in df.columns:
+            df_fechas = df.dropna(subset=['fecha'])
+            if len(df_fechas) > 0:
+                df_fechas['año'] = df_fechas['fecha'].dt.year
+                df_fechas['mes'] = df_fechas['fecha'].dt.month
+                
+                combinaciones = df_fechas[['año', 'mes']].drop_duplicates()
+                combinaciones = combinaciones.sort_values(['año', 'mes'], ascending=[False, False])
+                
+                for _, row in combinaciones.iterrows():
+                    año = int(row['año'])
+                    mes = int(row['mes'])
+                    nombre = f"{MESES_ES.get(mes, mes)} {año}"
+                    meses.append({'nombre': nombre, 'año': año, 'mes': mes})
+    except Exception as e:
+        st.error(f"Error obteniendo meses: {e}")
+    
+    return meses
+
 # ============================================
 # COMPONENTES UI
 # ============================================
@@ -178,7 +200,7 @@ def render_header(errores_mes):
             <div class="subtitle">Grupo Diagnóstico | Monitor de API</div>
         </div>
         <div style="text-align: right;">
-            <div style="color: {COLORS['gray']}; font-size: 0.8rem;">ERRORES ESTE MES</div>
+            <div style="color: {COLORS['gray']}; font-size: 0.8rem;">ERRORES DEL PERÍODO</div>
             <div style="color: {COLORS['cyan']}; font-size: 2rem; font-weight: 700;">{errores_mes:,}</div>
         </div>
     </div>
@@ -238,10 +260,13 @@ def render_kpis(df):
 # ============================================
 def grafico_tendencia_diaria(df):
     """Tendencia diaria del mes seleccionado"""
-    if 'fecha' not in df.columns or df['fecha'].isna().all():
+    if 'fecha' not in df.columns:
         return None
     
     df_temp = df.dropna(subset=['fecha']).copy()
+    if len(df_temp) == 0:
+        return None
+    
     df_temp['dia'] = df_temp['fecha'].dt.day
     por_dia = df_temp.groupby('dia').size().reset_index(name='Errores')
     
@@ -274,6 +299,9 @@ def grafico_por_tipo(df):
     conteo = df['tipo_error'].value_counts().head(10).reset_index()
     conteo.columns = ['Tipo', 'Cantidad']
     
+    if len(conteo) == 0:
+        return None
+    
     fig = go.Figure(go.Bar(
         x=conteo['Cantidad'],
         y=conteo['Tipo'],
@@ -300,6 +328,9 @@ def grafico_severidad(df):
     
     conteo = df['severidad'].value_counts().reset_index()
     conteo.columns = ['Severidad', 'Cantidad']
+    
+    if len(conteo) == 0:
+        return None
     
     colores_map = {'CRITICA': COLORS['red'], 'ALTA': COLORS['yellow'], 
                    'MEDIA': COLORS['blue_light'], 'BAJA': COLORS['green']}
@@ -335,7 +366,7 @@ def grafico_mensajes_error(df):
     conteo.columns = ['Mensaje', 'Cantidad']
     
     # Truncar mensajes largos
-    conteo['Mensaje_corto'] = conteo['Mensaje'].apply(lambda x: x[:50] + '...' if len(str(x)) > 50 else x)
+    conteo['Mensaje_corto'] = conteo['Mensaje'].apply(lambda x: str(x)[:50] + '...' if len(str(x)) > 50 else str(x))
     
     fig = go.Figure(go.Bar(
         x=conteo['Cantidad'],
@@ -344,7 +375,7 @@ def grafico_mensajes_error(df):
         marker=dict(color=conteo['Cantidad'], colorscale=[[0, COLORS['red']], [1, COLORS['yellow']]]),
         text=conteo['Cantidad'],
         textposition='auto',
-        hovertext=conteo['Mensaje'],  # Mensaje completo en hover
+        hovertext=conteo['Mensaje'],
         hoverinfo='text+x'
     ))
     
@@ -360,10 +391,13 @@ def grafico_mensajes_error(df):
     return fig
 
 def grafico_por_hora(df):
-    if 'fecha' not in df.columns or df['fecha'].isna().all():
+    if 'fecha' not in df.columns:
         return None
     
     df_temp = df.dropna(subset=['fecha']).copy()
+    if len(df_temp) == 0:
+        return None
+    
     df_temp['hora'] = df_temp['fecha'].dt.hour
     por_hora = df_temp.groupby('hora').size().reset_index(name='Errores')
     
@@ -390,21 +424,23 @@ def grafico_por_hora(df):
 # MAIN
 # ============================================
 def main():
-    # ========== CARGAR DATOS PRIMERO ==========
+    # ========== CARGAR DATOS ==========
     df_completo, error_carga = cargar_google_sheet()
     
+    if error_carga:
+        st.error(f"Error cargando datos: {error_carga}")
+        return
+    
+    if df_completo is None or len(df_completo) == 0:
+        st.warning("No hay datos disponibles en Google Sheets")
+        return
+    
     # Obtener meses disponibles
-    meses_disponibles = []
-    if df_completo is not None and 'fecha' in df_completo.columns and not df_completo['fecha'].isna().all():
-        df_completo['año_mes'] = df_completo['fecha'].dt.to_period('M')
-        meses_unicos = df_completo['año_mes'].dropna().unique()
-        meses_ordenados = sorted(meses_unicos, reverse=True)
-        
-        for m in meses_ordenados:
-            año = m.year
-            mes = m.month
-            nombre = f"{MESES_ES[mes]} {año}"
-            meses_disponibles.append((nombre, año, mes))
+    meses_disponibles = obtener_meses_disponibles(df_completo)
+    
+    # Valores por defecto
+    año_actual = datetime.now().year
+    mes_actual = datetime.now().month
     
     # ========== SIDEBAR ==========
     with st.sidebar:
@@ -417,22 +453,22 @@ def main():
         
         st.markdown("### 📅 Período")
         
-        # Selector de mes (por defecto el actual)
-        if meses_disponibles:
-            opciones_mes = [m[0] for m in meses_disponibles]
-            mes_seleccionado_idx = st.selectbox(
-                "Selecciona mes:",
-                range(len(opciones_mes)),
-                format_func=lambda x: opciones_mes[x],
-                index=0  # El primero es el más reciente
-            )
-            
-            _, año_sel, mes_sel = meses_disponibles[mes_seleccionado_idx]
-        else:
-            año_sel = datetime.now().year
-            mes_sel = datetime.now().month
+        # Selector de mes
+        año_sel = año_actual
+        mes_sel = mes_actual
         
-        # Opción para ver histórico completo
+        if meses_disponibles:
+            opciones = [m['nombre'] for m in meses_disponibles]
+            idx_seleccionado = st.selectbox(
+                "Selecciona mes:",
+                range(len(opciones)),
+                format_func=lambda x: opciones[x],
+                index=0
+            )
+            año_sel = meses_disponibles[idx_seleccionado]['año']
+            mes_sel = meses_disponibles[idx_seleccionado]['mes']
+        
+        # Opción para ver histórico
         ver_historico = st.checkbox("📊 Ver histórico completo", value=False)
         
         st.markdown("---")
@@ -448,7 +484,6 @@ def main():
         
         st.markdown("---")
         
-        # Botón refrescar
         if st.button("🔄 Actualizar datos"):
             st.cache_data.clear()
             st.rerun()
@@ -463,25 +498,25 @@ def main():
         """, unsafe_allow_html=True)
     
     # ========== FILTRAR POR MES ==========
-    df = df_completo.copy() if df_completo is not None else None
+    df = df_completo.copy()
     
-    if df is not None and not ver_historico and 'fecha' in df.columns:
+    if not ver_historico and 'fecha' in df.columns:
         df = df[(df['fecha'].dt.year == año_sel) & (df['fecha'].dt.month == mes_sel)]
     
     # ========== HEADER ==========
-    errores_mes = len(df) if df is not None else 0
-    render_header(errores_mes)
+    errores_periodo = len(df) if df is not None else 0
+    render_header(errores_periodo)
     
     # ========== SIN DATOS ==========
     if df is None or len(df) == 0:
         st.warning("⚠️ No hay datos disponibles para el período seleccionado.")
         return
     
-    # ========== APLICAR FILTRO DE SEVERIDAD ==========
+    # ========== FILTRO SEVERIDAD ==========
     if 'severidad' in df.columns and filtro_severidad:
         df = df[df['severidad'].isin(filtro_severidad)]
     
-    if df is None or len(df) == 0:
+    if len(df) == 0:
         st.warning("⚠️ No hay datos con los filtros seleccionados.")
         return
     
@@ -499,44 +534,51 @@ def main():
     
     st.markdown("<br>", unsafe_allow_html=True)
     
-    # ========== INFO DEL PERÍODO ==========
-    if 'fecha' in df.columns and not df['fecha'].isna().all():
-        fecha_min = df['fecha'].min()
-        fecha_max = df['fecha'].max()
-        periodo_texto = f"{MESES_ES[mes_sel]} {año_sel}" if not ver_historico else "Histórico completo"
-        st.markdown(f"""
-        <div class="info-box">
-            📅 <strong>Período:</strong> {periodo_texto} | 
-            <strong>Desde:</strong> {fecha_min.strftime('%d/%m/%Y')} <strong>hasta:</strong> {fecha_max.strftime('%d/%m/%Y')} | 
-            📊 <strong>Total:</strong> {len(df):,} registros
-        </div>
-        """, unsafe_allow_html=True)
+    # ========== INFO PERÍODO ==========
+    if 'fecha' in df.columns:
+        df_fechas = df.dropna(subset=['fecha'])
+        if len(df_fechas) > 0:
+            fecha_min = df_fechas['fecha'].min()
+            fecha_max = df_fechas['fecha'].max()
+            periodo_texto = f"{MESES_ES.get(mes_sel, mes_sel)} {año_sel}" if not ver_historico else "Histórico completo"
+            st.markdown(f"""
+            <div class="info-box">
+                📅 <strong>Período:</strong> {periodo_texto} | 
+                <strong>Desde:</strong> {fecha_min.strftime('%d/%m/%Y')} <strong>hasta:</strong> {fecha_max.strftime('%d/%m/%Y')} | 
+                📊 <strong>Total:</strong> {len(df):,} registros
+            </div>
+            """, unsafe_allow_html=True)
     
     # ========== GRÁFICOS FILA 1 ==========
     col1, col2 = st.columns(2)
     
     with col1:
         fig = grafico_tendencia_diaria(df)
-        if fig: st.plotly_chart(fig, use_container_width=True)
+        if fig: 
+            st.plotly_chart(fig, use_container_width=True)
     
     with col2:
         fig = grafico_severidad(df)
-        if fig: st.plotly_chart(fig, use_container_width=True)
+        if fig: 
+            st.plotly_chart(fig, use_container_width=True)
     
     # ========== GRÁFICOS FILA 2 ==========
     col1, col2 = st.columns(2)
     
     with col1:
         fig = grafico_por_tipo(df)
-        if fig: st.plotly_chart(fig, use_container_width=True)
+        if fig: 
+            st.plotly_chart(fig, use_container_width=True)
     
     with col2:
         fig = grafico_mensajes_error(df)
-        if fig: st.plotly_chart(fig, use_container_width=True)
+        if fig: 
+            st.plotly_chart(fig, use_container_width=True)
     
     # ========== POR HORA ==========
     fig = grafico_por_hora(df)
-    if fig: st.plotly_chart(fig, use_container_width=True)
+    if fig: 
+        st.plotly_chart(fig, use_container_width=True)
     
     # ========== TABS ==========
     tab1, tab2, tab3 = st.tabs(["📋 Detalle Mensajes", "🔍 Explorar Datos", "📊 Resumen"])
@@ -552,11 +594,12 @@ def main():
             else:
                 st.info("No hay mensajes de error registrados")
         else:
-            st.info("La columna 'error_message' no existe en los datos")
+            st.info("La columna 'error_message' no existe")
     
     with tab2:
         if 'tipo_error' in df.columns:
-            tipo_sel = st.selectbox("Filtrar por tipo:", ["Todos"] + list(df['tipo_error'].dropna().unique()))
+            tipos = ["Todos"] + list(df['tipo_error'].dropna().unique())
+            tipo_sel = st.selectbox("Filtrar por tipo:", tipos)
             df_show = df if tipo_sel == "Todos" else df[df['tipo_error'] == tipo_sel]
             st.dataframe(df_show, use_container_width=True, height=400)
         else:
@@ -570,12 +613,12 @@ def main():
             if 'tipo_error' in df.columns:
                 st.metric("Tipos Únicos", df['tipo_error'].nunique())
         with col3:
-            if 'fecha' in df.columns and not df['fecha'].isna().all():
-                dias = df['fecha'].dt.day.nunique()
+            if 'fecha' in df.columns:
+                dias = df.dropna(subset=['fecha'])['fecha'].dt.day.nunique()
                 st.metric("Días con Errores", dias)
         with col4:
-            if 'fecha' in df.columns and not df['fecha'].isna().all():
-                dias = max(df['fecha'].dt.day.nunique(), 1)
+            if 'fecha' in df.columns:
+                dias = max(df.dropna(subset=['fecha'])['fecha'].dt.day.nunique(), 1)
                 st.metric("Promedio/día", f"{len(df)//dias:,}")
     
     # ========== DESCARGAR ==========
@@ -583,10 +626,11 @@ def main():
     col1, col2, col3 = st.columns([1,1,1])
     with col2:
         csv = df.to_csv(index=False).encode('utf-8')
+        nombre_mes = MESES_ES.get(mes_sel, str(mes_sel))
         st.download_button(
-            "📥 Descargar CSV del período",
+            "📥 Descargar CSV",
             csv,
-            f"errores_proa_{MESES_ES[mes_sel]}_{año_sel}.csv",
+            f"errores_proa_{nombre_mes}_{año_sel}.csv",
             "text/csv",
             use_container_width=True
         )
